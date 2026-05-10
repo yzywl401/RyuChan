@@ -783,7 +783,7 @@ export function ConfigPage() {
                                                 {(parsedConfig?.music?.playlists || []).map((item: any, index: number) => (
                                                     <div key={index} className="collapse collapse-arrow bg-base-200/50 rounded-xl border border-base-300">
                                                         <input type="checkbox" className="peer" />
-                                                        <div className="collapse-title text-sm font-medium flex items-center gap-3 pr-2 min-h-0 py-3">
+                                                        <div className="collapse-title text-sm font-medium flex items-center gap-3 pr-10 min-h-0 py-3">
                                                             <span className="badge badge-sm font-mono">{String(index + 1).padStart(2, '0')}</span>
                                                             <span className="flex-1 truncate">{item.name || '未命名歌单'}</span>
                                                             <span className="badge badge-xs badge-ghost font-mono text-xs truncate max-w-[100px]">{item.id || '无ID'}</span>
