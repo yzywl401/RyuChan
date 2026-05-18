@@ -108,20 +108,5 @@
         "description": "Eight"
       }
     ]
-  },
-  {
-    "id": "1cb1d4d5",
-    "date": "2026-05-18",
-    "event": "Test",
-    "title": "",
-    "description": "",
-    "icon": "📷",
-    "photos": [
-      {
-        "src": "/image/albums/1cb1d4d5-0-1779094193188.jpeg",
-        "variant": "1x1",
-        "title": "小埋"
-      }
-    ]
   }
 ]
