@@ -81,7 +81,7 @@ export default function AlbumGrid() {
                   <h2 className="text-lg font-semibold flex items-center gap-2">
                     {album.icon && <span className="text-xl">{album.icon}</span>}
                     <a
-                      href={`/photo-wall/${album.id}`}
+                      href={`/photo-wall?id=${album.id}`}
                       className="text-primary hover:underline"
                     >
                       {album.event}

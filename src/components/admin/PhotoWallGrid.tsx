@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { Trash2, Camera, ImageOff } from 'lucide-react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { Camera, ImageOff, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useAlbumStore } from '@/stores/album-store'
 import type { AlbumItem, Photo } from '@/data/albums'
 
@@ -10,8 +10,6 @@ interface Props {
   event?: string
 }
 
-const VARIANT_LABELS: Record<string, string> = { '1x1': '1:1', '4x3': '4:3', '4x5': '4:5', '9x16': '9:16' }
-
 const VARIANT_RATIO: Record<string, string> = {
   '1x1': '1 / 1',
   '4x3': '4 / 3',
@@ -19,12 +17,8 @@ const VARIANT_RATIO: Record<string, string> = {
   '9x16': '9 / 16',
 }
 
-/** Track which images failed to load so we can show a fallback */
-function PhotoImage({ photo, idx, albumEvent }: { photo: Photo; idx: number; albumEvent: string }) {
+function PhotoImage({ photo }: { photo: Photo }) {
   const [error, setError] = useState(false)
-  const { updatePhoto } = useAlbumStore()
-
-  const handleError = () => setError(true)
 
   if (error) {
     return (
@@ -44,150 +38,145 @@ function PhotoImage({ photo, idx, albumEvent }: { photo: Photo; idx: number; alb
       alt={photo.title || ''}
       className="absolute inset-0 w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-500 ease-out"
       loading="lazy"
-      onError={handleError}
+      onError={() => setError(true)}
     />
   )
 }
 
 export default function PhotoWallGrid({ initialAlbum, event }: Props) {
-  const {
-    albums, isEditMode,
-    updatePhoto, deletePhoto, reorderPhotos,
-  } = useAlbumStore()
+  const { isEditMode, reorderPhotos } = useAlbumStore()
 
-  // View mode: use server-provided data (source of truth)
-  // Edit mode: use store data (working copy), falling back to server data
-  const storeEvent = event || initialAlbum?.event || ''
-  const storeAlbum = albums.find((a) => a.event === storeEvent)
-  const displayAlbum = isEditMode ? (storeAlbum || initialAlbum) : initialAlbum
-
-  const photos = displayAlbum?.photos || []
-  const albumEvent = displayAlbum?.event || storeEvent
-
-  const handleDeletePhoto = (idx: number) => {
-    if (confirm('确定要删除这张照片吗？')) {
-      deletePhoto(albumEvent, idx)
-    }
+  const getAlbumIdFromURL = (): string => {
+    if (typeof window === 'undefined') return event || ''
+    const params = new URLSearchParams(window.location.search)
+    return params.get('id') || event || ''
   }
+
+  const albumId = initialAlbum?.id || getAlbumIdFromURL()
+
+  const getAlbumFromStore = useCallback((): AlbumItem | undefined => {
+    if (!albumId) return undefined
+    return useAlbumStore.getState().albums.find((a) => a.id === albumId)
+  }, [albumId])
+
+  const getPhotosFromStore = useCallback((): Photo[] => {
+    return getAlbumFromStore()?.photos || []
+  }, [getAlbumFromStore])
+
+  const [photos, setPhotos] = useState<Photo[]>(() => {
+    const storePhotos = getPhotosFromStore()
+    if (storePhotos.length > 0) return storePhotos
+    return initialAlbum?.photos || []
+  })
+
+  const mountedRef = useRef(false)
+
+  useEffect(() => {
+    if (!mountedRef.current) {
+      mountedRef.current = true
+      const storePhotos = getPhotosFromStore()
+      if (storePhotos.length > 0) {
+        setPhotos(storePhotos)
+      }
+    }
+
+    if (!albumId) return
+
+    const unsub = useAlbumStore.subscribe((state, prevState) => {
+      if (state.albums === prevState.albums) return
+      const album = state.albums.find((a) => a.id === albumId)
+      if (album) {
+        setPhotos(album.photos || [])
+      }
+    })
+
+    return unsub
+  }, [albumId, getPhotosFromStore])
+
+  const [colCount, setColCount] = useState(3)
+
+  useEffect(() => {
+    const update = () => {
+      const w = window.innerWidth
+      if (w >= 1024) setColCount(3)
+      else if (w >= 640) setColCount(2)
+      else setColCount(1)
+    }
+    update()
+    window.addEventListener('resize', update)
+    return () => window.removeEventListener('resize', update)
+  }, [])
+
+  const cols: Photo[][] = Array.from({ length: colCount }, () => [])
+  photos.forEach((photo, i) => {
+    cols[i % colCount].push(photo)
+  })
 
   return (
     <div>
-      {/* Content */}
       {photos.length === 0 ? (
         <div className="text-center py-16">
           <Camera className="w-16 h-16 mx-auto mb-3 text-base-content/20" />
           <p className="text-lg text-base-content/30">暂无照片</p>
           {isEditMode && (
             <p className="text-sm text-base-content/30 mt-1">
-              点击上方「管理相册」进入编辑面板添加照片
+              返回相册管理面板添加照片
             </p>
           )}
         </div>
       ) : (
-        <div className="columns-1 sm:columns-2 lg:columns-3 gap-6 space-y-6">
-          {photos.map((photo, idx) => (
-            <div
-              key={`${photo.src}-${idx}`}
-              className="break-inside-avoid bg-base-100 rounded-3xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 border border-base-200 group"
-            >
-              {/* Image */}
-              <div
-                className="relative overflow-hidden bg-base-200"
-                style={{ aspectRatio: VARIANT_RATIO[photo.variant] || '1 / 1' }}
-              >
-                <PhotoImage photo={photo} idx={idx} albumEvent={albumEvent} />
-
-                {/* Delete overlay — only in edit mode */}
-                {isEditMode && (
-                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100 z-10">
-                    <button
-                      onClick={() => handleDeletePhoto(idx)}
-                      className="btn btn-sm btn-error gap-1 shadow-xl"
+        <div id="photo-wall-grid" className="flex gap-4 items-start">
+          {cols.map((colPhotos, colIdx) => (
+            <div key={colIdx} className="flex-1 min-w-0 flex flex-col gap-4">
+              {colPhotos.map((photo, row) => {
+                const idx = colIdx + row * colCount
+                return (
+                  <div
+                    key={`${photo.src}-${idx}`}
+                    className="w-full bg-base-100 rounded-3xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 border border-base-200 group"
+                  >
+                    <div
+                      className="w-full relative overflow-hidden bg-base-200"
+                      style={{ aspectRatio: VARIANT_RATIO[photo.variant] || '1 / 1' }}
                     >
-                      <Trash2 className="w-3.5 h-3.5" /> 删除照片
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {/* Info section */}
-              <div className="p-5">
-                {isEditMode ? (
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        value={photo.title || ''}
-                        onChange={(e) => updatePhoto(albumEvent, idx, { ...photo, title: e.target.value })}
-                        placeholder="照片标题"
-                        className="bg-transparent font-bold text-sm outline-none border-b border-transparent hover:border-primary/30 focus:border-primary flex-1 transition-colors"
-                      />
-                      <span className="text-xs opacity-30 bg-base-300 px-1.5 py-0.5 rounded whitespace-nowrap">
-                        {VARIANT_LABELS[photo.variant] || photo.variant}
-                      </span>
+                      <PhotoImage photo={photo} />
                     </div>
-                    <input
-                      type="text"
-                      value={photo.description || ''}
-                      onChange={(e) => updatePhoto(albumEvent, idx, { ...photo, description: e.target.value })}
-                      placeholder="照片描述"
-                      className="bg-transparent text-xs opacity-60 outline-none border-b border-transparent hover:border-primary/30 focus:border-primary w-full transition-colors"
-                    />
 
-                    <details className="text-xs opacity-40">
-                      <summary className="cursor-pointer hover:opacity-80">修改图片</summary>
-                      <div className="mt-1 space-y-1">
-                        <input
-                          type="text"
-                          value={photo.src}
-                          onChange={(e) => updatePhoto(albumEvent, idx, { ...photo, src: e.target.value })}
-                          placeholder="图片 URL"
-                          className="input input-xs input-bordered w-full text-xs"
-                        />
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={async (e) => {
-                            const f = e.target.files?.[0]
-                            if (!f) return
-                            const dataUrl = await new Promise<string>((res) => {
-                              const r = new FileReader()
-                              r.onload = () => res(r.result as string)
-                              r.readAsDataURL(f)
-                            })
-                            updatePhoto(albumEvent, idx, { ...photo, src: dataUrl }, f)
-                          }}
-                          className="text-xs"
-                        />
+                    <div className="p-5">
+                      <div className="min-h-[88px]">
+                        <h3 className="text-xl font-bold mb-2">{photo.title}</h3>
+                        {photo.description && (
+                          <p className="text-base-content/70 text-sm">{photo.description}</p>
+                        )}
                       </div>
-                    </details>
 
-                    <div className="flex items-center gap-1 pt-1">
-                      <button
-                        onClick={() => idx > 0 && reorderPhotos(albumEvent, idx, idx - 1)}
-                        disabled={idx === 0}
-                        className="btn btn-xs btn-ghost text-primary/50 hover:text-primary hover:bg-primary/10 rounded-lg px-1 disabled:opacity-20"
-                      >
-                        ← 前移
-                      </button>
-                      <button
-                        onClick={() => idx < photos.length - 1 && reorderPhotos(albumEvent, idx, idx + 1)}
-                        disabled={idx === photos.length - 1}
-                        className="btn btn-xs btn-ghost text-primary/50 hover:text-primary hover:bg-primary/10 rounded-lg px-1 disabled:opacity-20"
-                      >
-                        后移 →
-                      </button>
+                      {isEditMode && (
+                        <div className="flex items-center justify-center gap-3 pt-3">
+                          <button
+                            onClick={() => idx > 0 && reorderPhotos(albumId, idx, idx - 1)}
+                            disabled={idx === 0}
+                            className="btn btn-sm btn-primary btn-outline gap-1.5"
+                            title="前移"
+                          >
+                            <ChevronLeft className="w-3.5 h-3.5" /> 前移
+                          </button>
+                          <span className="text-sm font-semibold text-base-content/40 tabular-nums min-w-[3rem] text-center">
+                            {idx + 1} / {photos.length}
+                          </span>
+                          <button
+                            onClick={() => idx < photos.length - 1 && reorderPhotos(albumId, idx, idx + 1)}
+                            disabled={idx === photos.length - 1}
+                            className="btn btn-sm btn-primary btn-outline gap-1.5"
+                            title="后移"
+                          >
+                            后移 <ChevronRight className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
-                ) : (
-                  <>
-                    <h3 className="text-xl font-bold mb-2">{photo.title}</h3>
-                    {photo.description && (
-                      <p className="text-base-content/70 text-sm">{photo.description}</p>
-                    )}
-                  </>
-                )}
-              </div>
+                )
+              })}
             </div>
           ))}
         </div>

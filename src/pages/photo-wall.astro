@@ -1,5 +1,94 @@
 ---
-// /photo-wall without an event — redirect to the albums page
-// Individual album photo walls live at /photo-wall/[id]
-return Astro.redirect('/album')
+import BaseLayout from "../layouts/BaseLayout.astro";
+import { Icon } from "astro-icon/components";
+import { albums } from "../data/albums";
+import PhotoWallGrid from "../components/admin/PhotoWallGrid";
+import "@fancyapps/ui/dist/fancybox/fancybox.css";
+
+const id = Astro.url.searchParams.get("id") || "";
+const album = id ? albums.find((a) => a.id === id) : null;
 ---
+
+<BaseLayout title={album ? `${album.event} - 照片墙` : `照片墙`} description={album?.description}>
+  <div class="mb-10 animate-fade-in-up">
+    <div class="mb-4">
+      <h1 class="text-3xl md:text-4xl font-bold flex items-center gap-3">
+        <Icon name="lucide:camera" class="text-primary" />
+        <span id="photo-wall-title">{album ? `${album.icon || ''} ${album.event}` : '照片墙'}</span>
+      </h1>
+    </div>
+
+    <p id="photo-wall-description" class="text-base-content/70 text-lg mb-6">
+      {album?.description || (id ? '照片集' : '请从相册页面选择相册查看')}
+    </p>
+
+    <PhotoWallGrid
+      initialAlbum={album || null}
+      event={id}
+      client:only="react"
+    />
+  </div>
+
+  <div class="divider my-6 animate-fade-in-up" style="animation-delay: 0.1s;">
+    <Icon name="lucide:heart" class="w-12 h-12 text-primary/50" />
+  </div>
+</BaseLayout>
+
+<script>
+  import { Fancybox } from "@fancyapps/ui";
+
+  let fancyboxInitialized = false;
+
+  function initFancybox() {
+    if (fancyboxInitialized) return;
+    const grid = document.getElementById("photo-wall-grid");
+    if (!grid) return;
+
+    const images = grid.querySelectorAll("img");
+    if (images.length === 0) return;
+
+    images.forEach((img) => {
+      if (img.closest("a")) return;
+
+      const link = document.createElement("a");
+      link.href = (img as HTMLImageElement).src;
+      link.dataset.fancybox = "gallery";
+      link.dataset.caption = (img as HTMLImageElement).alt || "";
+
+      if (img.parentNode) {
+        img.parentNode.insertBefore(link, img);
+        link.appendChild(img);
+      }
+    });
+
+    Fancybox.bind("[data-fancybox]", {
+      Toolbar: {
+        display: {
+          left: ["infobar"],
+          middle: [
+            "zoomIn",
+            "zoomOut",
+            "toggle1to1",
+            "rotateCCW",
+            "rotateCW",
+            "flipX",
+            "flipY",
+          ],
+          right: ["slideshow", "thumbs", "close"],
+        },
+      },
+    } as any);
+
+    fancyboxInitialized = true;
+  }
+
+  document.addEventListener("astro:page-load", () => {
+    fancyboxInitialized = false;
+    let attempts = 0;
+    const interval = setInterval(() => {
+      initFancybox();
+      attempts++;
+      if (fancyboxInitialized || attempts > 20) clearInterval(interval);
+    }, 500);
+  });
+</script>
