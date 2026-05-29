@@ -22,9 +22,27 @@ export function detectVariant(width: number, height: number): Photo['variant'] {
 
 export function detectVariantFromUrl(url: string): Promise<Photo['variant']> {
   return new Promise((resolve) => {
-    const img = new Image()
-    img.onload = () => resolve(detectVariant(img.naturalWidth, img.naturalHeight))
-    img.onerror = () => resolve('1x1')
-    img.src = url
+    try {
+      const img = new Image()
+      
+      const timeoutId = setTimeout(() => {
+        img.src = ''
+        resolve('1x1')
+      }, 5000)
+
+      img.onload = () => {
+        clearTimeout(timeoutId)
+        resolve(detectVariant(img.naturalWidth, img.naturalHeight))
+      }
+      
+      img.onerror = () => {
+        clearTimeout(timeoutId)
+        resolve('1x1')
+      }
+      
+      img.src = url
+    } catch (e) {
+      resolve('1x1')
+    }
   })
 }

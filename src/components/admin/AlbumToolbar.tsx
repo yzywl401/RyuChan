@@ -107,6 +107,18 @@ export default function AlbumToolbar() {
           {isSaving ? '提交中...' : '保存'}
         </button>
       </div>
+
+      {isSaving && (
+        <div className="fixed inset-0 bg-base-100/80 backdrop-blur-sm z-[9999] flex flex-col items-center justify-center">
+          <div className="bg-base-100 p-8 rounded-2xl shadow-2xl border border-base-200 text-center max-w-sm w-full mx-4 animate-in fade-in zoom-in duration-300">
+            <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-6"></div>
+            <h3 className="text-xl font-bold mb-2">正在同步到远程仓库...</h3>
+            <p className="text-base-content/60 text-sm">
+              正在上传照片文件并更新配置数据，请勿关闭页面或刷新浏览器。进度会通过右上角的提示框显示...
+            </p>
+          </div>
+        </div>
+      )}
     </>
   )
 }

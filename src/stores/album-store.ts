@@ -132,16 +132,17 @@ export const useAlbumStore = create<AlbumStore>()(
         set((state) => ({
           albums: state.albums.map((a) => {
             if (a.id !== id) return a
-            return { ...a, photos: [...(a.photos || []), photo] }
+            return { ...a, photos: [photo, ...(a.photos || [])] }
           })
         }))
+        toast.success('照片已添加')
       },
 
       addPhotos: (id: string, photos: Photo[], _files?: File[]) => {
         set((state) => ({
           albums: state.albums.map((a) => {
             if (a.id !== id) return a
-            return { ...a, photos: [...(a.photos || []), ...photos] }
+            return { ...a, photos: [...photos, ...(a.photos || [])] }
           })
         }))
         toast.success(`已添加 ${photos.length} 张照片`)
