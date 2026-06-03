@@ -1,4 +1,3 @@
-
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -10,6 +9,10 @@ const CONFIG_PATH = path.resolve('ryuchan.config.yaml');
 const CONCURRENCY = 8;
 const RETRIES = 3;
 const SAVE_INTERVAL = 20; // incremental save every N resolved
+const SILENT = process.argv.includes('--silent');
+
+const log = (...args) => { if (!SILENT) console.log(...args); };
+const warn = (...args) => { console.warn(...args); };
 
 function formatDuration(seconds) {
   const minutes = Math.floor(seconds / 60);
@@ -23,7 +26,7 @@ function sleep(ms) {
 
 async function fetchPlaylistSongs(playlistId, trans) {
   const apiUrl = `https://163.hyc.moe?server=netease&type=playlist&id=${playlistId}`;
-  console.log(`  🎵 Fetching playlist ${playlistId}...`);
+  log(`  🎵 Fetching playlist ${playlistId}...`);
   try {
     const res = await fetch(apiUrl);
     if (!res.ok) throw new Error(`Meting API failed: ${res.statusText}`);
@@ -44,7 +47,7 @@ async function fetchPlaylistSongs(playlistId, trans) {
     });
   } catch (e) {
     console.error(`  ❌ Failed to fetch playlist ${playlistId}:`, e.message);
-    return [];
+    return null;
   }
 }
 
@@ -112,14 +115,37 @@ async function fetchDurationForSong(item) {
   return false;
 }
 
+/**
+ * Compute a lightweight fingerprint from sorted unique URLs only.
+ * Much faster than serializing full song objects.
+ */
+function computeUrlFingerprint(urls) {
+  return crypto
+    .createHash('sha256')
+    .update([...urls].sort().join('\n'))
+    .digest('hex');
+}
+
+/**
+ * Compute config fingerprint to detect playlist config changes.
+ * Only includes playlist IDs and types — no API calls needed.
+ */
+function computeConfigFingerprint(playlists) {
+  return crypto
+    .createHash('sha256')
+    .update(JSON.stringify(playlists.map(p => ({ id: p.id, type: p.type || 'netease' }))))
+    .digest('hex');
+}
+
 async function fetchMusicDuration() {
   try {
+    // --- Load config ---
     let config = {};
     try {
       const configStr = await fs.readFile(CONFIG_PATH, 'utf-8');
       config = yaml.load(configStr) || {};
     } catch (e) {
-      console.log('Could not load config, using defaults');
+      log('Could not load config, using defaults');
     }
 
     const trans = config?.site?.meting?.trans !== false;
@@ -130,17 +156,14 @@ async function fetchMusicDuration() {
       playlists.push({ id: singleId, name: '默认歌单', server: 'netease' });
     }
 
-    console.log(`🎵 Fetching ${playlists.length} playlist(s)...`);
+    log(`🎵 ${playlists.length} playlist(s) configured`);
 
-    // Compute fingerprint of playlist config to detect changes
-    const fingerprint = crypto
-      .createHash('md5')
-      .update(JSON.stringify(playlists))
-      .digest('hex');
-
-    // Load existing data for duration caching
+    // --- Load existing data (for cache & fingerprint) ---
     let existingData = { songs: [], playlistCounts: {}, playlistSongs: {} };
     const urlToDuration = new Map();
+    let existingUrlFingerprint = null;
+    let existingConfigFingerprint = null;
+
     try {
       const raw = await fs.readFile(MUSIC_DATA_PATH, 'utf-8');
       const parsed = JSON.parse(raw);
@@ -152,39 +175,44 @@ async function fetchMusicDuration() {
       existingData.songs.forEach(s => {
         if (s.url && s.duration) urlToDuration.set(s.url, s.duration);
       });
-      // Skip entirely if playlist config hasn't changed
-      if (existingData._fingerprint === fingerprint) {
-        console.log('✅ Playlist unchanged, all durations already cached. Skipping fetch.');
-        return;
-      }
+      existingUrlFingerprint = existingData._urlFingerprint || null;
+      existingConfigFingerprint = existingData._configFingerprint || null;
     } catch (e) { /* no existing data */ }
 
-    // Fetch all playlists
+    // --- Config fingerprint check (fast, no API calls) ---
+    const configFingerprint = computeConfigFingerprint(playlists);
+
+    // --- Fetch all playlists in parallel ---
+    const playlistResults = await Promise.all(
+      playlists.map(async (pl) => {
+        let songs;
+        if (pl.type === 'custom') {
+          songs = existingData.playlistSongs?.[pl.id] || [];
+          log(`  ✅ ${pl.name || pl.id} (自定义): ${songs.length} 首`);
+        } else {
+          let fetchedSongs = await fetchPlaylistSongs(pl.id, trans);
+          if (fetchedSongs === null) {
+            log(`  ⚠️ Failed to fetch, using cached for ${pl.name || pl.id}`);
+            songs = existingData.playlistSongs?.[pl.id] || [];
+          } else {
+            songs = fetchedSongs;
+          }
+          log(`  ✅ ${pl.name || pl.id}: ${songs.length} 首`);
+        }
+        return { playlist: pl, songs };
+      })
+    );
+
+    // --- Deduplicate & build data structures ---
     const playlistCounts = {};
     const playlistSongs = {};
     const allSongs = [];
     const seenUrls = new Set();
     const urlToSong = new Map();
 
-    for (const pl of playlists) {
-      let songs;
-      if (pl.type === 'custom') {
-        // 处理自定义歌单 - 从 music.json 的 playlistSongs 中读取
-        try {
-          songs = existingData.playlistSongs?.[pl.id] || [];
-          console.log(`  ✅ ${pl.name || pl.id} (自定义): ${songs.length} 首`);
-        } catch (e) {
-          console.error(`  ❌ 读取自定义歌单 ${pl.name || pl.id} 失败:`, e.message);
-          songs = [];
-        }
-      } else {
-        // 处理普通 ID 歌单
-        songs = await fetchPlaylistSongs(pl.id, trans);
-        console.log(`  ✅ ${pl.name || pl.id}: ${songs.length} 首`);
-      }
-
-      playlistCounts[pl.id] = songs.length;
-      playlistSongs[pl.id] = [];
+    for (const { playlist, songs } of playlistResults) {
+      playlistCounts[playlist.id] = songs.length;
+      playlistSongs[playlist.id] = [];
 
       for (const song of songs) {
         if (!seenUrls.has(song.url)) {
@@ -194,39 +222,66 @@ async function fetchMusicDuration() {
           }
           allSongs.push(song);
           urlToSong.set(song.url, song);
-          playlistSongs[pl.id].push(song);
+          playlistSongs[playlist.id].push(song);
         } else {
-          playlistSongs[pl.id].push(urlToSong.get(song.url));
+          playlistSongs[playlist.id].push(urlToSong.get(song.url));
         }
       }
     }
 
-    console.log(`📊 Total unique songs: ${allSongs.length}`);
+    // --- Lightweight URL fingerprint ---
+    const urlFingerprint = computeUrlFingerprint(seenUrls);
+
+    // --- Smart skip: config + URL set + playlist counts + all durations cached ---
+    // playlistCounts catches: a playlist added/removed songs without URL change
+    const playlistCountsChanged = JSON.stringify(playlistCounts) !== JSON.stringify(existingData.playlistCounts || {});
+    if (
+      configFingerprint === existingConfigFingerprint &&
+      urlFingerprint === existingUrlFingerprint &&
+      !playlistCountsChanged &&
+      allSongs.every(s => !s.url || s.duration)
+    ) {
+      log('✅ Config, songs, and counts unchanged, all durations cached — skipping.');
+      return;
+    }
+
+    log(`📊 Total unique songs: ${allSongs.length}`);
 
     // Collect songs that need duration fetching
     const pending = allSongs.filter(s => s.url && !s.duration);
     const alreadyCached = allSongs.length - pending.length;
 
-    console.log(`📊 Cached durations: ${alreadyCached}`);
-    console.log(`📊 Need durations: ${pending.length}`);
+    log(`📊 Cached durations: ${alreadyCached}`);
+    log(`📊 Need durations: ${pending.length}`);
 
     if (pending.length === 0) {
-      console.log('✅ All durations already cached.');
-      // Still save to persist fingerprint and playlist structure
-      const output = { songs: allSongs, playlistCounts, playlistSongs, _fingerprint: fingerprint };
+      log('✅ All durations already cached.');
+      const output = {
+        songs: allSongs,
+        playlistCounts,
+        playlistSongs,
+        _urlFingerprint: urlFingerprint,
+        _configFingerprint: configFingerprint
+      };
       await fs.writeFile(MUSIC_DATA_PATH, JSON.stringify(output, null, 4), 'utf-8');
       return;
     }
 
     // --- Concurrent duration fetching ---
-    console.log(`🎵 Fetching ${pending.length} durations (${CONCURRENCY} concurrent, ${RETRIES} retries)...`);
+    log(`🎵 Fetching ${pending.length} durations (${CONCURRENCY} concurrent, ${RETRIES} retries)...`);
 
     let index = 0;
     let success = 0;
     let failed = 0;
     let lastSave = 0;
 
-    const output = { songs: allSongs, playlistCounts, playlistSongs, _fingerprint: fingerprint };
+    const output = {
+      songs: allSongs,
+      playlistCounts,
+      playlistSongs,
+      _urlFingerprint: urlFingerprint,
+      _configFingerprint: configFingerprint
+    };
 
     async function worker(workerId) {
       while (true) {
@@ -240,10 +295,10 @@ async function fetchMusicDuration() {
         if (ok) {
           success++;
           const label = item.duration ? ` -> ${item.duration}` : ` -> ok`;
-          console.log(`  [${workerId}]${label} (${success + failed}/${pending.length}) ${item.title}`);
+          log(`  [${workerId}]${label} (${success + failed}/${pending.length}) ${item.title}`);
         } else {
           failed++;
-          console.warn(`  [${workerId}] -> FAILED (${success + failed}/${pending.length}) ${item.title}`);
+          warn(`  [${workerId}] -> FAILED (${success + failed}/${pending.length}) ${item.title}`);
         }
 
         // Incremental save
@@ -251,7 +306,7 @@ async function fetchMusicDuration() {
           lastSave = success;
           try {
             await fs.writeFile(MUSIC_DATA_PATH, JSON.stringify(output, null, 4), 'utf-8');
-            console.log(`  💾 Saved (${success} resolved so far)`);
+            log(`  💾 Saved (${success} resolved so far)`);
           } catch (e) {
             console.error('  ⚠️  Save failed:', e.message);
           }
@@ -265,9 +320,9 @@ async function fetchMusicDuration() {
     // Final save
     await fs.writeFile(MUSIC_DATA_PATH, JSON.stringify(output, null, 4), 'utf-8');
 
-    console.log(`\n✅ Done. Resolved: ${success}, Failed: ${failed}, Total: ${allSongs.length}`);
+    log(`\n✅ Done. Resolved: ${success}, Failed: ${failed}, Total: ${allSongs.length}`);
     if (failed > 0) {
-      console.log(`⚠️  ${failed} songs could not get durations. Re-run to retry.`);
+      log(`⚠️  ${failed} songs could not get durations. Re-run to retry.`);
     }
   } catch (error) {
     console.error('Fatal error:', error);
