@@ -1,6 +1,9 @@
-allowBuilds:
-  esbuild: set this to true or false
-  sharp: set this to true or false
-  swup: set this to true or false
-  unrs-resolver: set this to true or false
-  workerd: set this to true or false
+packages:
+  - "."
+
+onlyBuiltDependencies:
+  - esbuild
+  - sharp
+  - swup
+  - unrs-resolver
+  - workerd
