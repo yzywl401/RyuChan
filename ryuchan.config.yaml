@@ -117,7 +117,7 @@ music:
 github:
   owner: kobaridev
   repo: RyuChan
-  branch: main
+  branch: dev
   appId: 在部署端配置环境变量
   encryptKey: wudishiduomejimo
 umami:
