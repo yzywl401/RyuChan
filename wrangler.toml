@@ -1,0 +1,17 @@
+main = "worker/index.js"
+name = "ryuchan"
+compatibility_date = "2026-04-29"
+compatibility_flags = ["nodejs_compat"]
+
+[assets]
+directory = "dist"
+binding = "ASSETS"
+
+[build]
+command = "pnpm build"
+
+[observability]
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+invocation_logs = true
