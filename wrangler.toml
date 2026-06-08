@@ -1,5 +1,5 @@
 main = "worker/index.js"
-name = "ryuchan"
+name = "dev"
 compatibility_date = "2026-04-29"
 compatibility_flags = ["nodejs_compat"]
 
@@ -8,7 +8,7 @@ directory = "dist"
 binding = "ASSETS"
 
 [build]
-command = "pnpm build"
+command = "pnpm run build:worker"
 
 [observability]
 [observability.logs]

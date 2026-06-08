@@ -9,13 +9,14 @@
     "prefetch:music": "node scripts/fetch-music-duration.mjs",
     "prebuild": "node scripts/fetch-music-duration.mjs --progress",
     "build": "astro build && npx pagefind --site ./dist",
+    "build:worker": "astro build",
     "search:clean": "rimraf public/pagefind",
     "search:index": "pnpm build && node scripts/copy-pagefind.mjs",
     "preview": "pnpm build && wrangler pages dev dist",
     "astro": "astro",
     "deploy": "pnpm build && wrangler pages deploy dist",
     "deploy:worker": "wrangler deploy",
-    "preview:worker": "pnpm build && wrangler dev",
+    "preview:worker": "pnpm build:worker && wrangler dev",
     "cf-typegen": "wrangler types"
   },
   "dependencies": {
