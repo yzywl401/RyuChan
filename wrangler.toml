@@ -7,9 +7,6 @@ compatibility_flags = ["nodejs_compat"]
 directory = "dist"
 binding = "ASSETS"
 
-[build]
-command = "pnpm run build:worker"
-
 [observability]
 [observability.logs]
 enabled = true
