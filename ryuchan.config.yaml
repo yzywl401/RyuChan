@@ -100,7 +100,11 @@ anime:
     apiKey: 08a6bef260044f70c150251c79f2e476
     listId: '8556173'
 music:
-  playlists: []
+  playlists:
+    - id: '13005826021'
+      name: 我喜欢的
+      server: netease
+      type: id
 github:
   owner: kobaridev
   repo: RyuChan
