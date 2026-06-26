@@ -132,16 +132,7 @@ user:
   qr_wechat: /WeChat.jpg
   qr_alipay: /Alipay.jpg
   sidebar:
-    social:
-      - href: https://space.bilibili.com/1536411565
-        ariaLabel: BiliBili
-        title: BiliBili
-        svg: ri:bilibili-line
-      - href: >-
-          https://www.douyin.com/user/MS4wLjABAAAAeO0sqJYUgh1a26GkVPtS2yv_IOODjeqvtl4KSjvsntg?from_tab_name=main
-        ariaLabel: Douyin
-        title: Douyin
-        svg: ri:tiktok-line
+    social: []
   footer:
     social: []
 comments:
