@@ -1,1 +1,5 @@
-[]
+- name: 韵之逸
+  avatar: /images/friends/avatar-0.png
+  description: 你们可爱的群主
+  url: https://ryu-chan-sooty.vercel.app/
+  badge: 站主
